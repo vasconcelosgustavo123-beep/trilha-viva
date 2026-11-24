@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Simulador 3D: Quatérnios (Sem Distorção)</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        html, body {
+            width: 100%;
+            height: 100dvh;
+            overflow: hidden;
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+        }
+        /* Área 3D flexível que ocupa exatamente o espaço disponível acima do painel */
+        #viewport-container {
+            position: relative;
+            flex: 1 1 auto;
+            width: 100%;
+            min-height: 180px;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+            touch-action: none;
+        }
+        /* HUD Flutuante no topo */
+        #hud-top {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: none;
+            gap: 8px;
+        }
+        .hud-box {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(6px);
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        #quat-display {
+            font-family: "SFMono-Regular", Consolas, monospace;
+            color: #38bdf8;
+            font-weight: 600;
+        }
+        /* Painel Inferior (Dock) */
+        #bottom-panel {
+            flex: 0 0 auto;
+            width: 100%;
+            background: #1e293b;
+            border-top: 1px solid #334155;
+            z-index: 10;
+            transition: max-height 0.25s ease;
+        }
+        #panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 16px;
+            background: #0f172a;
+            border-bottom: 1px solid #334155;
+            cursor: pointer;
+        }
+        #panel-header span {
+            font-size: 13px;
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+        #toggle-btn {
+            background: #334155;
+            color: #f8fafc;
+            border: none;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        #panel-body {
+            padding: 12px 16px;
+            max-height: 45dvh;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        #bottom-panel.collapsed #panel-body {
+            display: none;
+        }
+        .section-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #94a3b8;
+            margin-bottom: 6px;
+            font-weight: 700;
+        }
+        .btn-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        .btn-grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        button.action-btn {
+            padding: 10px 8px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #fff;
+            cursor: pointer;
+            transition: opacity 0.15s, transform 0.1s;
+        }
+        button.action-btn:active {
+            transform: scale(0.97);
+        }
+        .btn-jk { background: #2563eb; }
+        .btn-kj { background: #dc2626; }
+        .btn-x { background: #b91c1c; }
+        .btn-y { background: #15803d; }
+        .btn-z { background: #1d4ed8; }
+        .btn-reset { background: #475569; }
+        .btn-view {
+            background: #334155;
+            padding: 7px 6px;
+            font-size: 12px;
+        }
+        .slider-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+        .slider-row label {
+            width: 85px;
+            font-size: 12px;
+            color: #cbd5e1;
+        }
+        .slider-row input[type="range"] {
+            flex: 1;
+            accent-color: #38bdf8;
+            height: 6px;
+        }
+        .slider-row span.val {
+            width: 42px;
+            text-align: right;
+            font-size: 12px;
+            font-family: monospace;
+            color: #38bdf8;
+        }
+        #status-bar {
+            background: #0f172a;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            color: #e2e8f0;
+            border-left: 3px solid #38bdf8;
+        }
+    </style>
+</head>
+<body>
+
+<div id="viewport-container">
+    <div id="hud-top">
+        <div class="hud-box">
+            <div><span style="color:#f87171;">■</span> X (i) &nbsp; <span style="color:#4ade80;">■</span> Y (j) &nbsp; <span style="color:#60a5fa;">■</span> Z (k)</div>
+            <div style="color:#94a3b8; font-size:11px; margin-top:2px;">Arraste na tela para girar o plano</div>
+        </div>
+        <div class="hud-box" id="quat-display">
+            q = 1.00 + 0.00i + 0.00j + 0.00k
+        </div>
+    </div>
+    <canvas id="gl-canvas"></canvas>
+</div>
+
+<div id="bottom-panel">
+    <div id="panel-header" onclick="togglePanel()">
+        <span>Controles e Calibração do Plano</span>
+        <button id="toggle-btn" type="button">Recolher ▼</button>
+    </div>
+    <div id="panel-body">
+        <div id="status-bar">Pronto: Posição inicial alinhada (seta branca para +Z).</div>
+
+        <div>
+            <div class="section-title">Demonstração Não Comutativa</div>
+            <div class="btn-grid-2">
+                <button class="action-btn btn-jk" onclick="runSequence('jk')">1. Simular jk (+i)</button>
+                <button class="action-btn btn-kj" onclick="runSequence('kj')">2. Simular kj (-i)</button>
+            </div>
+        </div>
+
+        <div>
+            <div class="section-title">Rotações Manuais (+90° Fixo) e Reset</div>
+            <div class="btn-grid" style="grid-template-columns: repeat(4, 1fr);">
+                <button class="action-btn btn-x" onclick="rotateManual('x')">+X (i)</button>
+                <button class="action-btn btn-y" onclick="rotateManual('y')">+Y (j)</button>
+                <button class="action-btn btn-z" onclick="rotateManual('z')">+Z (k)</button>
+                <button class="action-btn btn-reset" onclick="resetAll()">Resetar</button>
+            </div>
+        </div>
+
+        <div>
+            <div class="section-title">Calibração da Câmera / Plano</div>
+            <div class="slider-row">
+                <label>Giro Horiz.</label>
+                <input type="range" id="azimute" min="-180" max="180" value="45" oninput="updateCameraFromSliders()">
+                <span class="val" id="val-azimute">45°</span>
+            </div>
+            <div class="slider-row">
+                <label>Inclinação</label>
+                <input type="range" id="elevacao" min="-85" max="85" value="30" oninput="updateCameraFromSliders()">
+                <span class="val" id="val-elevacao">30°</span>
+            </div>
+            <div class="slider-row">
+                <label>Distância</label>
+                <input type="range" id="distancia" min="3.5" max="14" step="0.1" value="6.5" oninput="updateCameraFromSliders()">
+                <span class="val" id="val-distancia">6.5</span>
+            </div>
+            <div class="btn-grid" style="margin-top:6px;">
+                <button class="action-btn btn-view" onclick="setPresetView(45, 30, 6.5)">Vista 3D</button>
+                <button class="action-btn btn-view" onclick="setPresetView(0, 85, 6.5)">Topo (Z)</button>
+                <button class="action-btn btn-view" onclick="setPresetView(0, 0, 6.5)">Frente (X)</button>
+                <button class="action-btn btn-view" onclick="setPresetView(90, 0, 6.5)">Direita (Y)</button>
+                <button class="action-btn btn-view" onclick="setPresetView(-90, 0, 6.5)">Esquerda</button>
+                <button class="action-btn btn-view" onclick="setPresetView(180, 0, 6.5)">Trás (-X)</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Motor WebGL puro e autocontido (sem dependências externas, proporção 1:1 garantida)
+const canvas = document.getElementById('gl-canvas');
+const container = document.getElementById('viewport-container');
+const gl = canvas.getContext('webgl', { antialias: true });
+
+// Matrizes 4x4 e Quatérnios
+function mat4Identity() {
+    return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+}
+function mat4Multiply(a, b) {
+    const out = new Float32Array(16);
+    for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 4; j++) {
+            out[j*4 + i] = a[0*4+i]*b[j*4+0] + a[1*4+i]*b[j*4+1] + a[2*4+i]*b[j*4+2] + a[3*4+i]*b[j*4+3];
+        }
+    }
+    return out;
+}
+function mat4Perspective(fovRad, aspect, near, far) {
+    const f = 1.0 / Math.tan(fovRad / 2);
+    const nf = 1 / (near - far);
+    return new Float32Array([
+        f / aspect, 0, 0, 0,
+        0, f, 0, 0,
+        0, 0, (far + near) * nf, -1,
+        0, 0, (2 * far * near) * nf, 0
+    ]);
+}
+function mat4LookAt(eye, center, up) {
+    let zx = eye[0] - center[0], zy = eye[1] - center[1], zz = eye[2] - center[2];
+    let len = Math.hypot(zx, zy, zz);
+    zx /= len; zy /= len; zz /= len;
+
+    let xx = up[1]*zz - up[2]*zy;
+    let xy = up[2]*zx - up[0]*zz;
+    let xz = up[0]*zy - up[1]*zx;
+    len = Math.hypot(xx, xy, xz);
+    xx /= len; xy /= len; xz /= len;
+
+    let yx = zy*xz - zz*xy;
+    let yy = zz*xx - zx*xz;
+    let yz = zx*xy - zy*xx;
+
+    return new Float32Array([
+        xx, yx, zx, 0,
+        xy, yy, zy, 0,
+        xz, yz, zz, 0,
+        -(xx*eye[0] + xy*eye[1] + xz*eye[2]),
+        -(yx*eye[0] + yy*eye[1] + yz*eye[2]),
+        -(zx*eye[0] + zy*eye[1] + zz*eye[2]),
+        1
+    ]);
+}
+
+// Quatérnio [w, x, y, z]
+function quatMultiply(q1, q2) {
+    const [w1, x1, y1, z1] = q1;
+    const [w2, x2, y2, z2] = q2;
+    return [
+        w1*w2 - x1*x2 - y1*y2 - z1*z2,
+        w1*x2 + x1*w2 + y1*z2 - z1*y2,
+        w1*y2 - x1*z2 + y1*w2 + z1*x2,
+        w1*z2 + x1*y2 - y1*x2 + z1*w2
+    ];
+}
+function quatFromAxisAngle(axis, angleRad) {
+    const half = angleRad * 0.5;
+    const s = Math.sin(half);
+    return [Math.cos(half), axis[0]*s, axis[1]*s, axis[2]*s];
+}
+function quatSlerp(qa, qb, t) {
+    let [w1, x1, y1, z1] = qa;
+    let [w2, x2, y2, z2] = qb;
+    let cosHalfTheta = w1*w2 + x1*x2 + y1*y2 + z1*z2;
+    if (cosHalfTheta < 0) {
+        w2 = -w2; x2 = -x2; y2 = -y2; z2 = -z2;
+        cosHalfTheta = -cosHalfTheta;
+    }
+    if (cosHalfTheta >= 1.0) return [w1, x1, y1, z1];
+    const halfTheta = Math.acos(cosHalfTheta);
+    const sinHalfTheta = Math.sqrt(1.0 - cosHalfTheta*cosHalfTheta);
+    if (Math.abs(sinHalfTheta) < 0.001) {
+        return [w1*0.5 + w2*0.5, x1*0.5 + x2*0.5, y1*0.5 + y2*0.5, z1*0.5 + z2*0.5];
+    }
+    const ratioA = Math.sin((1 - t) * halfTheta) / sinHalfTheta;
+    const ratioB = Math.sin(t * halfTheta) / sinHalfTheta;
+    return [
+        w1*ratioA + w2*ratioB,
+        x1*ratioA + x2*ratioB,
+        y1*ratioA + y2*ratioB,
+        z1*ratioA + z2*ratioB
+    ];
+}
+function quatToMat4(q) {
+    const [w, x, y, z] = q;
+    const x2 = x + x, y2 = y + y, z2 = z + z;
+    const xx = x * x2, xy = x * y2, xz = x * z2;
+    const yy = y * y2, yz = y * z2, zz = z * z2;
+    const wx = w * x2, wy = w * y2, wz = w * z2;
+    return new Float32Array([
+        1 - (yy + zz), xy + wz, xz - wy, 0,
+        xy - wz, 1 - (xx + zz), yz + wx, 0,
+        xz + wy, yz - wx, 1 - (xx + yy), 0,
+        0, 0, 0, 1
+    ]);
+}
+
+// Shaders WebGL
+const vsSource = `
+    attribute vec3 aPos;
+    attribute vec3 aColor;
+    uniform mat4 uMVP;
+    varying vec3 vColor;
+    void main() {
+        gl_Position = uMVP * vec4(aPos, 1.0);
+        vColor = aColor;
+    }
+`;
+const fsSource = `
+    precision mediump float;
+    varying vec3 vColor;
+    void main() {
+        gl_FragColor = vec4(vColor, 1.0);
+    }
+`;
+function createShader(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, createShader(gl.VERTEX_SHADER, vsSource));
+gl.attachShader(prog, createShader(gl.FRAGMENT_SHADER, fsSource));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const aPosLoc = gl.getAttribLocation(prog, 'aPos');
+const aColorLoc = gl.getAttribLocation(prog, 'aColor');
+const uMVPLoc = gl.getUniformLocation(prog, 'uMVP');
+
+// Geometria: Bloco Assimétrico + Ponteiro Branco
+function buildBlockGeometry() {
+    // Sistema matemático: X = frente, Y = direita, Z = cima
+    const hx = 0.85, hy = 0.55, hz = 0.14;
+    const faces = [
+        // +Z (Topo - Azul)
+        { pts: [[-hx,-hy,hz], [hx,-hy,hz], [hx,hy,hz], [-hx,hy,hz]], col: [0.23, 0.51, 0.96] },
+        // -Z (Fundo - Cinza escuro)
+        { pts: [[-hx,hy,-hz], [hx,hy,-hz], [hx,-hy,-hz], [-hx,-hy,-hz]], col: [0.15, 0.20, 0.28] },
+        // +X (Frente - Vermelho)
+        { pts: [[hx,-hy,-hz], [hx,hy,-hz], [hx,hy,hz], [hx,-hy,hz]], col: [0.94, 0.27, 0.27] },
+        // -X (Trás - Laranja)
+        { pts: [[-hx,hy,-hz], [-hx,-hy,-hz], [-hx,-hy,hz], [-hx,hy,hz]], col: [0.96, 0.62, 0.04] },
+        // +Y (Direita - Verde)
+        { pts: [[hx,hy,-hz], [-hx,hy,-hz], [-hx,hy,hz], [hx,hy,hz]], col: [0.13, 0.77, 0.37] },
+        // -Y (Esquerda - Verde escuro)
+        { pts: [[-hx,-hy,-hz], [hx,-hy,-hz], [hx,-hy,hz], [-hx,-hy,hz]], col: [0.08, 0.50, 0.24] }
+    ];
+    const verts = [];
+    const cols = [];
+    for (const f of faces) {
+        const idx = [0, 1, 2, 0, 2, 3];
+        for (const i of idx) {
+            verts.push(...f.pts[i]);
+            cols.push(...f.col);
+        }
+    }
+    // Ponteiro piramidal saindo de +Z para destacar direção
+    const pBase = 0.08, pTop = 0.95;
+    const tri = [
+        [[0,0,pTop], [pBase,0,hz], [0,pBase,hz]],
+        [[0,0,pTop], [0,pBase,hz], [-pBase,0,hz]],
+        [[0,0,pTop], [-pBase,0,hz], [0,-pBase,hz]],
+        [[0,0,pTop], [0,-pBase,hz], [pBase,0,hz]]
+    ];
+    for (const t of tri) {
+        for (const p of t) {
+            verts.push(...p);
+            cols.push(1, 1, 1);
+        }
+    }
+    return { verts: new Float32Array(verts), cols: new Float32Array(cols), count: verts.length / 3 };
+}
+
+// Geometria: Eixos e Grade XY (Z=0)
+function buildGridAndAxes() {
+    const verts = [];
+    const cols = [];
+    // Grade no plano XY
+    const size = 2.5, step = 0.5;
+    for (let v = -size; v <= size + 0.001; v += step) {
+        const c = Math.abs(v) < 0.01 ? 0.35 : 0.20;
+        verts.push(-size, v, 0, size, v, 0);
+        cols.push(c, c, c+0.05, c, c, c+0.05);
+        verts.push(v, -size, 0, v, size, 0);
+        cols.push(c, c, c+0.05, c, c, c+0.05);
+    }
+    // Eixo X (Vermelho)
+    verts.push(0,0,0, 2.4,0,0); cols.push(0.95,0.25,0.25, 0.95,0.25,0.25);
+    // Eixo Y (Verde)
+    verts.push(0,0,0, 0,2.4,0); cols.push(0.20,0.85,0.40, 0.20,0.85,0.40);
+    // Eixo Z (Azul)
+    verts.push(0,0,0, 0,0,2.4); cols.push(0.30,0.60,1.00, 0.30,0.60,1.00);
+    return { verts: new Float32Array(verts), cols: new Float32Array(cols), count: verts.length / 3 };
+}
+
+const blockGeo = buildBlockGeometry();
+const gridGeo = buildGridAndAxes();
+
+function createBuffer(data) {
+    const b = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, b);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    return b;
+}
+const blockVBuf = createBuffer(blockGeo.verts);
+const blockCBuf = createBuffer(blockGeo.cols);
+const gridVBuf = createBuffer(gridGeo.verts);
+const gridCBuf = createBuffer(gridGeo.cols);
+
+// Estado da Simulação e Câmera
+let currentQuat = [1, 0, 0, 0];
+let isAnimating = false;
+let camAzimuth = 45;
+let camElevation = 30;
+let camDistance = 6.5;
+
+// Ajuste dinâmico de resolução e proporção (Corrige o amassamento!)
+function syncCanvasSize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = container.getBoundingClientRect();
+    const w = Math.max(1, Math.floor(rect.width * dpr));
+    const h = Math.max(1, Math.floor(rect.height * dpr));
+    if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+        gl.viewport(0, 0, w, h);
+    }
+    return { width: rect.width, height: rect.height };
+}
+
+// Observador automático de redimensionamento do container (detecta teclado, barra do navegador, recolher painel, rotação de tela)
+const resizeObserver = new ResizeObserver(() => {
+    syncCanvasSize();
+});
+resizeObserver.observe(container);
+window.addEventListener('resize', syncCanvasSize);
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncCanvasSize);
+}
+
+function updateQuatHUD() {
+    const [w, x, y, z] = currentQuat.map(v => Math.abs(v) < 0.005 ? 0 : v);
+    const fmt = n => (n >= 0 ? '+' : '-') + Math.abs(n).toFixed(2);
+    document.getElementById('quat-display').textContent =
+        `q = ${w.toFixed(2)} ${fmt(x)}i ${fmt(y)}j ${fmt(z)}k`;
+}
+
+function render() {
+    const { width, height } = syncCanvasSize();
+    const aspect = width / Math.max(1, height);
+
+    gl.clearColor(0.059, 0.090, 0.165, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+
+    const az = camAzimuth * Math.PI / 180;
+    const el = camElevation * Math.PI / 180;
+    const eye = [
+        camDistance * Math.cos(el) * Math.cos(az),
+        camDistance * Math.cos(el) * Math.sin(az),
+        camDistance * Math.sin(el)
+    ];
+
+    const proj = mat4Perspective(45 * Math.PI / 180, aspect, 0.1, 100.0);
+    const view = mat4LookAt(eye, [0, 0, 0], [0, 0, 1]);
+    const vp = mat4Multiply(proj, view);
+
+    // Desenhar Grade e Eixos
+    gl.uniformMatrix4fv(uMVPLoc, false, vp);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gridVBuf);
+    gl.vertexAttribPointer(aPosLoc, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(aPosLoc);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gridCBuf);
+    gl.vertexAttribPointer(aColorLoc, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(aColorLoc);
+    gl.drawArrays(gl.LINES, 0, gridGeo.count);
+
+    // Desenhar Bloco Rotacionado
+    const model = quatToMat4(currentQuat);
+    const mvp = mat4Multiply(vp, model);
+    gl.uniformMatrix4fv(uMVPLoc, false, mvp);
+    gl.bindBuffer(gl.ARRAY_BUFFER, blockVBuf);
+    gl.vertexAttribPointer(aPosLoc, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, blockCBuf);
+    gl.vertexAttribPointer(aColorLoc, 3, gl.FLOAT, false, 0, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, blockGeo.count);
+
+    requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+
+// Animação suave
+function animateRotation(axis, angleRad, durationMs) {
+    return new Promise(resolve => {
+        const qStart = [...currentQuat];
+        const qDelta = quatFromAxisAngle(axis, angleRad);
+        const qEnd = quatMultiply(qDelta, qStart);
+        const start = performance.now();
+
+        function step(now) {
+            const t = Math.min((now - start) / durationMs, 1);
+            const ease = t < 0.5 ? 2*t*t : -1 + (4 - 2*t)*t;
+            currentQuat = quatSlerp(qStart, qEnd, ease);
+            updateQuatHUD();
+            if (t < 1) {
+                requestAnimationFrame(step);
+            } else {
+                currentQuat = qEnd;
+                updateQuatHUD();
+                resolve();
+            }
+        }
+        requestAnimationFrame(step);
+    });
+}
+
+async function runSequence(type) {
+    if (isAnimating) return;
+    currentQuat = [1, 0, 0, 0];
+    updateQuatHUD();
+    isAnimating = true;
+    const status = document.getElementById('status-bar');
+    const halfPi = Math.PI / 2;
+
+    if (type === 'jk') {
+        status.style.borderLeftColor = '#3b82f6';
+        status.textContent = 'Passo 1/2: Girando +90° em torno de Z (k)...';
+        await animateRotation([0, 0, 1], halfPi, 750);
+        status.textContent = 'Passo 2/2: Girando +90° em torno de Y (j)...';
+        await animateRotation([0, 1, 0], halfPi, 750);
+        status.textContent = 'Concluído jk (+i): Seta branca aponta para +X (frente).';
+    } else {
+        status.style.borderLeftColor = '#ef4444';
+        status.textContent = 'Passo 1/2: Girando +90° em torno de Y (j)...';
+        await animateRotation([0, 1, 0], halfPi, 750);
+        status.textContent = 'Passo 2/2: Girando +90° em torno de Z (k)...';
+        await animateRotation([0, 0, 1], halfPi, 750);
+        status.textContent = 'Concluído kj (-i): Seta branca aponta para +Y (direita). Ordem importa!';
+    }
+    isAnimating = false;
+}
+
+async function rotateManual(axisName) {
+    if (isAnimating) return;
+    isAnimating = true;
+    const map = { x: [1,0,0], y: [0,1,0], z: [0,0,1] };
+    await animateRotation(map[axisName], Math.PI / 2, 450);
+    document.getElementById('status-bar').textContent = `Rotação manual +90° no eixo ${axisName.toUpperCase()} aplicada.`;
+    isAnimating = false;
+}
+
+function resetAll() {
+    if (isAnimating) return;
+    currentQuat = [1, 0, 0, 0];
+    updateQuatHUD();
+    const status = document.getElementById('status-bar');
+    status.style.borderLeftColor = '#38bdf8';
+    status.textContent = 'Resetado: Posição inicial restaurada.';
+}
+
+// Controles da Câmera e Calibração
+function updateCameraFromSliders() {
+    camAzimuth = parseFloat(document.getElementById('azimute').value);
+    camElevation = parseFloat(document.getElementById('elevacao').value);
+    camDistance = parseFloat(document.getElementById('distancia').value);
+    document.getElementById('val-azimute').textContent = `${Math.round(camAzimuth)}°`;
+    document.getElementById('val-elevacao').textContent = `${Math.round(camElevation)}°`;
+    document.getElementById('val-distancia').textContent = camDistance.toFixed(1);
+}
+
+function setPresetView(az, el, dist) {
+    document.getElementById('azimute').value = az;
+    document.getElementById('elevacao').value = el;
+    document.getElementById('distancia').value = dist;
+    updateCameraFromSliders();
+}
+
+function togglePanel() {
+    const panel = document.getElementById('bottom-panel');
+    const btn = document.getElementById('toggle-btn');
+    panel.classList.toggle('collapsed');
+    btn.textContent = panel.classList.contains('collapsed') ? 'Expandir ▲' : 'Recolher ▼';
+    // Garante recálculo imediato da proporção da tela 3D
+    setTimeout(syncCanvasSize, 20);
+}
+
+// Arrastar na tela com mouse ou toque para calibrar o plano livremente
+let dragging = false, lastX = 0, lastY = 0;
+canvas.addEventListener('pointerdown', e => {
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+
+    camAzimuth = ((camAzimuth - dx * 0.5 + 540) % 360) - 180;
+    camElevation = Math.max(-85, Math.min(85, camElevation + dy * 0.5));
+
+    document.getElementById('azimute').value = Math.round(camAzimuth);
+    document.getElementById('elevacao').value = Math.round(camElevation);
+    document.getElementById('val-azimute').textContent = `${Math.round(camAzimuth)}°`;
+    document.getElementById('val-elevacao').textContent = `${Math.round(camElevation)}°`;
+});
+canvas.addEventListener('pointerup', e => {
+    dragging = false;
+    canvas.releasePointerCapture(e.pointerId);
+});
+canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    camDistance = Math.max(3.5, Math.min(14, camDistance + e.deltaY * 0.005));
+    document.getElementById('distancia').value = camDistance.toFixed(1);
+    document.getElementById('val-distancia').textContent = camDistance.toFixed(1);
+}, { passive: false });
+</script>
+</body>
+</html>

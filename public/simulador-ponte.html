@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Simulador 3D - Ponte de Palitos</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body { overflow: hidden; background: #12141a; color: #f8f9fa; user-select: none; touch-action: none; }
+    #canvas-container { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 1; }
+
+    /* Barra Superior Fixa */
+    #top-bar {
+      position: fixed; top: 10px; left: 10px; right: 10px; z-index: 120;
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
+      pointer-events: none;
+    }
+    .pill {
+      pointer-events: auto; background: #1c1f28; border: 1.5px solid #3f4556;
+      padding: 8px 13px; border-radius: 10px; font-size: 13px; font-weight: 700;
+      color: #f8f9fa; box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+    }
+    #toggle-menu-btn {
+      pointer-events: auto; background: #2b303e; border: 1.5px solid #5c647a;
+      color: #fff; padding: 8px 14px; border-radius: 10px; font-size: 13px;
+      font-weight: 700; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+    }
+
+    /* Painel Principal de Alto Contraste */
+    #ui-panel {
+      position: fixed; top: 56px; left: 10px; width: 355px; max-height: calc(100vh - 125px);
+      overflow-y: auto; background: #1a1d26; border: 2px solid #3f4556;
+      border-radius: 14px; padding: 15px; box-shadow: 0 12px 32px rgba(0,0,0,0.75);
+      z-index: 115; transition: transform 0.25s ease, opacity 0.2s ease;
+    }
+    #ui-panel.collapsed { transform: translateX(-380px); opacity: 0; pointer-events: none; }
+
+    @media (orientation: portrait) and (max-width: 768px) {
+      #ui-panel {
+        top: 54px; left: 8px; right: 8px; width: auto; max-height: 58vh;
+      }
+      #ui-panel.collapsed { transform: translateY(-110%); }
+    }
+
+    .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    h1 { font-size: 16px; color: #f4a261; font-weight: 800; }
+    .close-btn {
+      background: #343a46; color: #fff; border: none; border-radius: 6px;
+      padding: 4px 10px; font-size: 12px; font-weight: 700; cursor: pointer; width: auto;
+    }
+
+    .sec { border-top: 1px solid #2f3442; padding-top: 10px; margin-top: 10px; }
+    .sec-t { font-size: 11px; text-transform: uppercase; letter-spacing: 0.7px; color: #adb5bd; margin-bottom: 7px; font-weight: 800; }
+    .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; font-size: 13px; color: #e9ecef; }
+    .val { font-weight: 800; color: #ffd166; }
+    .val.danger { color: #ff6b6b; }
+    .val.ok { color: #2ec4b6; }
+
+    .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+    .g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 6px; }
+    .g4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; margin-bottom: 6px; }
+
+    button {
+      width: 100%; padding: 9px 7px; border: none; border-radius: 8px;
+      font-weight: 700; cursor: pointer; font-size: 12.5px; transition: 0.12s;
+    }
+    button:active { transform: scale(0.96); }
+    .b-add { background: #2a9d8f; color: #fff; }
+    .b-sec { background: #323746; color: #f8f9fa; border: 1px solid #495057; }
+    .b-del { background: #495057; color: #fff; }
+    .b-del:hover { background: #c92a2a; }
+    .b-grav { background: #3b5bdb; color: #fff; }
+    .b-pause { background: #e67700; color: #fff; }
+    .b-reset { background: #495057; color: #fff; }
+    .b-force { background: #5f3dc4; color: #fff; margin-bottom: 6px; }
+    .b-force.active { background: #7950f2; box-shadow: 0 0 0 2px #d0bfff; }
+    .b-test { background: #e76f51; color: #fff; margin-top: 4px; }
+
+    .tbox {
+      display: flex; align-items: center; justify-content: space-between;
+      background: #242834; padding: 8px 10px; border-radius: 8px; margin-bottom: 7px; border: 1px solid #373d4f;
+    }
+    input[type="checkbox"] { transform: scale(1.25); cursor: pointer; accent-color: #2ec4b6; }
+    input[type="number"], input[type="text"], select {
+      padding: 6px 8px; border-radius: 6px; border: 1px solid #5c647a;
+      background: #12141a; color: #fff; font-size: 12.5px; font-weight: 600;
+    }
+    input[type="number"] { width: 68px; text-align: right; }
+    input[type="range"] { width: 100%; accent-color: #f4a261; cursor: pointer; margin: 4px 0 8px; height: 6px; }
+
+    #inspect-box {
+      background: #222632; border: 1px solid #3f4556; border-radius: 8px;
+      padding: 8px 10px; font-size: 12px; margin-top: 6px; line-height: 1.45;
+    }
+    .leg {
+      display: flex; justify-content: space-between; font-size: 11px; font-weight: 600;
+      background: #14161d; padding: 6px 8px; border-radius: 6px; margin-top: 5px;
+    }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+
+    /* Barra Inferior Sempre Visível (com + Palito e Iniciar/Pausar/Resetar) */
+    #bottom-dock {
+      position: fixed; bottom: 12px; left: 10px; right: 10px; z-index: 125;
+      display: flex; justify-content: space-between; align-items: flex-end; gap: 8px;
+      pointer-events: none;
+    }
+
+    /* D-Pad Tátil Compacto para Peça Selecionada */
+    #touch-dpad {
+      pointer-events: auto; display: none;
+      background: rgba(26, 29, 38, 0.96); border: 1.5px solid #495057;
+      border-radius: 12px; padding: 7px; box-shadow: 0 6px 20px rgba(0,0,0,0.65);
+    }
+    #touch-dpad.visible { display: block; }
+    .dpad-grid { display: grid; grid-template-columns: repeat(3, 36px); gap: 4px; }
+    .dpad-grid button { padding: 7px 0; font-size: 12.5px; background: #2f3442; color: #fff; border-radius: 6px; }
+    .dpad-grid button:active { background: #f4a261; color: #12141a; }
+
+    /* Ações Rápidas Fixas embaixo (Iniciar + Adicionar Palito) */
+    #quick-actions {
+      pointer-events: auto; display: flex; flex-wrap: wrap; justify-content: flex-end;
+      gap: 6px; margin-left: auto;
+    }
+    .q-btn {
+      width: auto; padding: 11px 14px; border-radius: 12px; font-size: 13px;
+      font-weight: 800; box-shadow: 0 5px 18px rgba(0,0,0,0.6); border: 1.5px solid rgba(255,255,255,0.15);
+    }
+    .q-start { background: #3b5bdb; color: #fff; }
+    .q-pause { background: #e67700; color: #fff; }
+    .q-reset { background: #495057; color: #fff; }
+    .q-add { background: #2a9d8f; color: #fff; }
+
+    @media (max-width: 480px) {
+      .q-btn { padding: 10px 10px; font-size: 12px; }
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<!-- Barra Superior -->
+<div id="top-bar">
+  <div class="pill" id="top-summary">Vão: 24 cm (h=6cm) | 0.0 / 60g</div>
+  <button id="toggle-menu-btn">☰ Menu</button>
+</div>
+
+<!-- Painel Lateral / Superior -->
+<div id="ui-panel">
+  <div class="panel-header">
+    <h1>Simulador 3D - Ponte</h1>
+    <button class="close-btn" id="close-panel-btn">✕ Minimizar</button>
+  </div>
+
+  <!-- Gerenciador de Projetos -->
+  <div class="sec" style="border-top:none; padding-top:0; margin-top:0;">
+    <div class="sec-t">Projetos (Salvar, Escolher & Criar)</div>
+    <div class="row" style="gap:5px;">
+      <select id="project-select" style="flex:1;"></select>
+      <button class="b-del" id="btn-del-proj" style="width:auto; padding:6px 10px;" title="Excluir Projeto">🗑</button>
+    </div>
+    <div class="row" style="gap:5px;">
+      <input type="text" id="project-name" placeholder="Nome do projeto..." style="flex:1;" />
+      <button class="b-add" id="btn-save-proj" style="width:auto; padding:6px 11px;">💾 Salvar</button>
+    </div>
+    <button class="b-sec" id="btn-new-proj">📄 Criar Novo Projeto Limpo</button>
+  </div>
+
+  <!-- Peças -->
+  <div class="sec">
+    <div class="sec-t">Peças & Edição</div>
+    <div class="g3">
+      <button class="b-add" id="btn-add-stick">+ Palito</button>
+      <button class="b-sec" id="btn-dup-stick">Duplicar</button>
+      <button class="b-del" id="btn-delete">Apagar</button>
+    </div>
+  </div>
+
+  <!-- Vão e Câmera -->
+  <div class="sec">
+    <div class="sec-t">Vão (10cm a 1m) & Câmera</div>
+    <div class="row">
+      <span>Distância / Altura Bloco (¼):</span>
+      <span class="val" id="span-label">24 cm / h: 6.0 cm</span>
+    </div>
+    <input type="range" id="span-slider" min="10" max="100" value="24" step="1" />
+
+    <div class="g4">
+      <button class="b-sec" data-view="front">Frente</button>
+      <button class="b-sec" data-view="top">Topo</button>
+      <button class="b-sec" data-view="side">Lado</button>
+      <button class="b-sec" data-view="3d">3D</button>
+    </div>
+    <div class="g4">
+      <button class="b-sec" id="cam-left">◄ Esq</button>
+      <button class="b-sec" id="cam-right">Dir ►</button>
+      <button class="b-sec" id="cam-zoom-in">Zoom +</button>
+      <button class="b-sec" id="cam-zoom-out">Zoom -</button>
+    </div>
+  </div>
+
+  <!-- Gravidade -->
+  <div class="sec">
+    <div class="sec-t">Gravidade & Apoio por Formato</div>
+    <div class="g3">
+      <button class="b-grav" id="btn-grav-start">▶ Iniciar</button>
+      <button class="b-pause" id="btn-grav-pause">⏸ Pausar</button>
+      <button class="b-reset" id="btn-grav-reset">↺ Resetar</button>
+    </div>
+    <div id="grav-status" style="font-size:12px; color:#ced4da;">Apoio apenas por formato (sem cola nos blocos).</div>
+  </div>
+
+  <!-- Balança -->
+  <div class="sec">
+    <div class="sec-t">Balança & Modelo Ideal (x + y ≤ P_máx)</div>
+    <div class="tbox">
+      <div>
+        <strong style="font-size:12.5px; color:#ffd166;">Modelo Ideal (Cola dx ≈ 0)</strong>
+        <div style="font-size:11px; color:#ced4da;">Cola perfeita entre palitos, massa ≈ 0</div>
+      </div>
+      <input type="checkbox" id="ideal-toggle" checked />
+    </div>
+
+    <div class="row">
+      <span>Limite Balança (P_máx):</span>
+      <div><input type="number" id="max-weight" value="60" min="1" /> g</div>
+    </div>
+    <div class="row">
+      <span>Palito (p) / Cola (c):</span>
+      <div>
+        <input type="number" id="stick-weight" value="1.5" step="0.1" style="width:52px" /> /
+        <input type="number" id="glue-weight" value="0.3" step="0.05" style="width:52px" /> g
+      </div>
+    </div>
+    <div class="row">
+      <span>Palitos (n) / Junções:</span>
+      <span class="val"><span id="stat-sticks">0</span> / <span id="stat-joints">0</span></span>
+    </div>
+    <div class="row">
+      <span>Madeira (x) + Cola (y):</span>
+      <span class="val"><span id="stat-wood">0.0</span> + <span id="stat-glue">0.0</span> g</span>
+    </div>
+    <div class="row" style="font-size:14px; border-top:1px dashed #3f4556; padding-top:6px;">
+      <span>Massa Total:</span>
+      <span class="val ok" id="stat-total">0.00 g</span>
+    </div>
+  </div>
+
+  <!-- Forças e Ruptura -->
+  <div class="sec">
+    <div class="sec-t">Distribuição de Forças & Ruptura</div>
+    <button class="b-force" id="btn-toggle-forces">👁 Ver Distribuição de Forças</button>
+
+    <div class="row">
+      <span>Distribuição:</span>
+      <select id="load-dist">
+        <option value="uniform">Uniforme (Distribuída)</option>
+        <option value="center">Concentrada no Centro</option>
+        <option value="asymmetric">Má Distribuição (Assimétrica)</option>
+      </select>
+    </div>
+    <div class="row">
+      <span>Carga Total / F_máx Peça:</span>
+      <div>
+        <input type="number" id="test-load" value="15" min="1" style="width:52px" /> kg /
+        <input type="number" id="f-max-input" value="8.0" step="0.5" style="width:52px" /> kgf
+      </div>
+    </div>
+
+    <div class="leg">
+      <span><i class="dot" style="background:#339af0"></i>Compressão</span>
+      <span><i class="dot" style="background:#f59f00"></i>Tração</span>
+      <span><i class="dot" style="background:#51cf66"></i>Baixa</span>
+      <span><i class="dot" style="background:#ff4d4d"></i>F > F_máx</span>
+    </div>
+
+    <div id="inspect-box">Toque ou clique em um palito para ver a força (kgf) e mover.</div>
+
+    <button class="b-test" id="btn-run-test">⚡ Testar Carga & Ruptura Rígida</button>
+    <div id="test-result" style="font-size:12px; margin-top:5px; color:#ced4da;">
+      Sem flexão: se F > F_máx, a peça quebra.
+    </div>
+  </div>
+</div>
+
+<!-- Barra Inferior Sempre Visível (mesmo com painel minimizado) -->
+<div id="bottom-dock">
+  <div id="touch-dpad">
+    <div class="dpad-grid">
+      <button data-act="rotL">↺ Z</button>
+      <button data-act="up">▲ Y</button>
+      <button data-act="rotR">↻ Z</button>
+      <button data-act="left">◄ X</button>
+      <button data-act="down">▼ Y</button>
+      <button data-act="right">► X</button>
+      <button data-act="zIn">+Z</button>
+      <button data-act="rotX">⟳ X</button>
+      <button data-act="zOut">-Z</button>
+    </div>
+  </div>
+
+  <div id="quick-actions">
+    <button class="q-btn q-start" id="quick-grav-start">▶ Iniciar</button>
+    <button class="q-btn q-pause" id="quick-grav-pause">⏸</button>
+    <button class="q-btn q-reset" id="quick-grav-reset">↺</button>
+    <button class="q-btn q-add" id="quick-add-btn">+ Palito (Δx)</button>
+  </div>
+</div>
+
+<script>
+window.onload = function() {
+  if (typeof THREE === 'undefined') return;
+
+  const $ = id => document.getElementById(id);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x12141a);
+
+  const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  $('canvas-container').appendChild(renderer.domElement);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.78));
+  const dLight = new THREE.DirectionalLight(0xffffff, 0.85);
+  dLight.position.set(25, 50, 35);
+  scene.add(dLight);
+
+  scene.add(new THREE.GridHelper(160, 80, 0x3b4052, 0x222530));
+
+  // Pilares (Altura = 1/4 da distância entre blocos)
+  const pWidth = 4;
+  let pHeight = 6;
+  const pMat = new THREE.MeshStandardMaterial({ color: 0x3b4152, roughness: 0.75 });
+  const leftPillar = new THREE.Mesh(new THREE.BoxGeometry(pWidth, 1, 10), pMat);
+  const rightPillar = new THREE.Mesh(new THREE.BoxGeometry(pWidth, 1, 10), pMat);
+  scene.add(leftPillar, rightPillar);
+
+  const spanLine = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-12, 0.08, 5.5), new THREE.Vector3(12, 0.08, 5.5)]),
+    new THREE.LineBasicMaterial({ color: 0xffd166 })
+  );
+  scene.add(spanLine);
+
+  const forceArrowsGroup = new THREE.Group();
+  scene.add(forceArrowsGroup);
+
+  const loadBlock = new THREE.Mesh(
+    new THREE.BoxGeometry(3, 1.1, 3),
+    new THREE.MeshStandardMaterial({ color: 0xe76f51, transparent: true, opacity: 0.88 })
+  );
+  scene.add(loadBlock);
+
+  // Textura de madeira
+  const tc = document.createElement('canvas');
+  tc.width = 256; tc.height = 64;
+  const tctx = tc.getContext('2d');
+  tctx.fillStyle = '#deb887'; tctx.fillRect(0, 0, 256, 64);
+  for (let i = 0; i < 60; i++) {
+    tctx.fillStyle = i % 2 ? 'rgba(255,240,215,0.18)' : 'rgba(145,90,40,0.18)';
+    tctx.fillRect(0, Math.random() * 64, 256, 1 + Math.random() * 2);
+  }
+  const woodTex = new THREE.CanvasTexture(tc);
+
+  // Câmera responsiva
+  let camAz = 0, camEl = 0.36, camDist = 38, camTX = 0, camTY = 5.5;
+  function updateCamera() {
+    const asp = window.innerWidth / window.innerHeight;
+    camera.aspect = asp;
+    camera.fov = asp < 1 ? Math.min(75, 45 / Math.max(asp, 0.62)) : 45;
+    camera.updateProjectionMatrix();
+    const hd = camDist * Math.cos(camEl);
+    camera.position.set(camTX + hd * Math.sin(camAz), camTY + camDist * Math.sin(camEl), hd * Math.cos(camAz));
+    camera.lookAt(camTX, camTY, 0);
+  }
+
+  let currentSpan = 24;
+  function updateSpan(spanCm, autoZoom = true) {
+    currentSpan = spanCm;
+    pHeight = spanCm / 4; // Altura = 1/4 da distância
+    const half = spanCm / 2;
+
+    leftPillar.scale.set(1, pHeight, 1);
+    rightPillar.scale.set(1, pHeight, 1);
+    leftPillar.position.set(-(half + pWidth / 2), pHeight / 2, 0);
+    rightPillar.position.set(half + pWidth / 2, pHeight / 2, 0);
+
+    spanLine.geometry.setFromPoints([
+      new THREE.Vector3(-half, 0.08, 5.5),
+      new THREE.Vector3(half, 0.08, 5.5)
+    ]);
+
+    $('span-label').textContent = `${spanCm} cm / h: ${pHeight.toFixed(1)} cm`;
+    camTY = pHeight * 0.9;
+    if (autoZoom) {
+      camDist = Math.max(30, spanCm * 1.38);
+      updateCamera();
+    }
+    updateLoadIndicator();
+    updateStats();
+  }
+
+  function updateLoadIndicator() {
+    const dist = $('load-dist').value;
+    const half = currentSpan / 2;
+    const topY = pHeight + 1.2;
+    if (dist === 'uniform') {
+      loadBlock.scale.set(Math.max(1, currentSpan * 0.28), 0.7, 1);
+      loadBlock.position.set(0, topY, 0);
+    } else if (dist === 'center') {
+      loadBlock.scale.set(1.2, 1.3, 1.2);
+      loadBlock.position.set(0, topY + 0.3, 0);
+    } else {
+      loadBlock.scale.set(1.3, 1.3, 1.2);
+      loadBlock.position.set(half * 0.55, topY + 0.3, 0);
+    }
+  }
+
+  // Palitos e colisão com o chão (y >= 0)
+  const sticks = [], debris = [];
+  let selectedStick = null, showForces = false;
+  const stickGeo = new THREE.BoxGeometry(11.5, 0.25, 1.0);
+  const halfGeo = new THREE.BoxGeometry(5.6, 0.25, 1.0);
+
+  function clampToGround(obj) {
+    obj.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(obj);
+    if (box.min.y < 0) {
+      obj.position.y += -box.min.y;
+      obj.updateMatrixWorld(true);
+    }
+  }
+
+  function selectStick(s) {
+    if (selectedStick) selectedStick.material.emissive.setHex(0x000000);
+    selectedStick = s;
+    if (selectedStick) {
+      selectedStick.material.emissive.setHex(0x332600);
+      $('touch-dpad').classList.add('visible');
+    } else {
+      $('touch-dpad').classList.remove('visible');
+    }
+    updateInspect();
+  }
+
+  function addStick(x = 0, y = null, z = 0, rx = 0, ry = 0, rz = 0) {
+    resetGrav(false);
+    const py = y !== null ? y : pHeight + 0.4 + sticks.length * 0.3;
+    const m = new THREE.Mesh(stickGeo, new THREE.MeshStandardMaterial({ map: woodTex, roughness: 0.7 }));
+    m.position.set(x, py, z);
+    m.rotation.set(rx, ry, rz);
+    m.userData = { broken: false, stress: 0, type: 'Neutra' };
+    clampToGround(m);
+    scene.add(m);
+    sticks.push(m);
+    selectStick(m);
+    updateStats();
+    return m;
+  }
+
+  function dupStick() {
+    if (!selectedStick) return;
+    addStick(
+      selectedStick.position.x + 1,
+      selectedStick.position.y + 0.5,
+      selectedStick.position.z,
+      selectedStick.rotation.x,
+      selectedStick.rotation.y,
+      selectedStick.rotation.z
+    );
+  }
+
+  function delStick() {
+    if (!selectedStick) return;
+    resetGrav(false);
+    scene.remove(selectedStick);
+    sticks.splice(sticks.indexOf(selectedStick), 1);
+    selectStick(null);
+    updateStats();
+  }
+
+  // Esforços e visualização de forças
+  function calcForces() {
+    const loadKg = parseFloat($('test-load').value) || 15;
+    const fMax = parseFloat($('f-max-input').value) || 8.0;
+    const dist = $('load-dist').value;
+    const half = currentSpan / 2;
+    const boxes = sticks.map(s => new THREE.Box3().setFromObject(s));
+    const lBox = new THREE.Box3().setFromObject(leftPillar).expandByScalar(0.12);
+    const rBox = new THREE.Box3().setFromObject(rightPillar).expandByScalar(0.12);
+    const spanPen = 0.7 + (currentSpan / 28);
+    const avgY = sticks.length ? sticks.reduce((a, s) => a + s.position.y, 0) / sticks.length : pHeight;
+
+    sticks.forEach((s, i) => {
+      let conn = 0;
+      for (let j = 0; j < sticks.length; j++) if (i !== j && boxes[i].intersectsBox(boxes[j])) conn++;
+      if (boxes[i].intersectsBox(lBox) || boxes[i].intersectsBox(rBox)) conn += 1.2;
+
+      let df = 1.0;
+      const x = s.position.x;
+      if (dist === 'uniform') df = Math.max(0.55, 1.15 - Math.abs(x) / Math.max(half * 1.6, 10));
+      else if (dist === 'center') df = Math.max(0.35, 1.75 - (Math.abs(x) / Math.max(half, 6)) * 1.2);
+      else df = Math.max(0.3, 2.0 - (Math.abs(x - half * 0.55) / Math.max(half, 6)) * 1.4);
+
+      const angBonus = Math.abs(Math.sin(s.rotation.z)) > 0.2 ? 1.25 : 1.0;
+      const f = (loadKg * df * spanPen) / (Math.max(0.85, (1 + conn * 0.95) * angBonus) * 2.2);
+      s.userData.stress = f;
+      s.userData.type = Math.abs(Math.sin(s.rotation.z)) > 0.25
+        ? (s.position.y >= avgY ? 'Compressão (Diag.)' : 'Tração (Diag.)')
+        : (s.position.y > avgY + 0.35 ? 'Compressão' : 'Tração');
+
+      if (showForces) {
+        if (f > fMax) s.material.color.setHex(0xff3b3b);
+        else if (f < fMax * 0.35) s.material.color.setHex(0x51cf66);
+        else s.material.color.setHex(s.userData.type.startsWith('Compressão') ? 0x339af0 : 0xf59f00);
+      } else if (!s.userData.broken) {
+        s.material.color.setHex(0xffffff);
+      }
+    });
+
+    while (forceArrowsGroup.children.length) forceArrowsGroup.remove(forceArrowsGroup.children[0]);
+    if (showForces) {
+      const lPos = dist === 'uniform'
+        ? [-half * 0.7, 0, half * 0.7]
+        : (dist === 'center' ? [0] : [half * 0.55]);
+      lPos.forEach(lx => {
+        forceArrowsGroup.add(new THREE.ArrowHelper(new THREE.Vector3(0, -1, 0), new THREE.Vector3(lx, pHeight + 4.2, 0), 2.5, 0xff6b6b, 0.6, 0.45));
+      });
+      sticks.forEach(s => {
+        const f = s.userData.stress, len = Math.min(3, Math.max(0.9, (f / fMax) * 2.2));
+        const isC = s.userData.type.startsWith('Compressão');
+        const col = f > fMax ? 0xff3b3b : (isC ? 0x339af0 : 0xf59f00);
+        const dR = new THREE.Vector3(1, 0, 0).applyEuler(s.rotation), dL = dR.clone().negate();
+        const p = s.position.clone().add(new THREE.Vector3(0, 0.4, 0));
+        if (isC) {
+          forceArrowsGroup.add(new THREE.ArrowHelper(dL, p.clone().addScaledVector(dR, len), len, col, 0.4, 0.3));
+          forceArrowsGroup.add(new THREE.ArrowHelper(dR, p.clone().addScaledVector(dL, len), len, col, 0.4, 0.3));
+        } else {
+          forceArrowsGroup.add(new THREE.ArrowHelper(dR, p, len, col, 0.4, 0.3));
+          forceArrowsGroup.add(new THREE.ArrowHelper(dL, p, len, col, 0.4, 0.3));
+        }
+      });
+    }
+    updateInspect();
+  }
+
+  function updateInspect() {
+    const fMax = parseFloat($('f-max-input').value) || 8.0;
+    if (!selectedStick) {
+      $('inspect-box').innerHTML = 'Toque ou clique em um palito para ver a força (kgf) e mover.';
+      return;
+    }
+    const f = selectedStick.userData.stress || 0;
+    const col = f > fMax ? '#ff6b6b' : '#51cf66';
+    $('inspect-box').innerHTML = `<strong>${selectedStick.userData.type}</strong> | F = <span style="color:${col};font-weight:800">${f.toFixed(2)} kgf</span> (${((f / fMax) * 100).toFixed(0)}%)`;
+  }
+
+  function updateStats() {
+    let joints = 0;
+    const boxes = sticks.map(s => new THREE.Box3().setFromObject(s));
+    for (let i = 0; i < sticks.length; i++) {
+      for (let j = i + 1; j < sticks.length; j++) if (boxes[i].intersectsBox(boxes[j])) joints++;
+    }
+    const ideal = $('ideal-toggle').checked;
+    const maxW = parseFloat($('max-weight').value) || 60;
+    const p = parseFloat($('stick-weight').value) || 1.5;
+    const c = parseFloat($('glue-weight').value) || 0.3;
+    const wM = sticks.length * p, gM = ideal ? 0 : joints * c, tot = wM + gM;
+
+    $('stat-sticks').textContent = sticks.length;
+    $('stat-joints').textContent = joints;
+    $('stat-wood').textContent = wM.toFixed(1);
+    $('stat-glue').textContent = ideal ? '0.0 (dx≈0)' : gM.toFixed(1);
+
+    const tEl = $('stat-total');
+    tEl.textContent = tot.toFixed(2) + ' g' + (tot > maxW ? ' (EXCEDEU!)' : '');
+    tEl.className = 'val ' + (tot > maxW ? 'danger' : 'ok');
+    $('top-summary').textContent = `Vão: ${currentSpan}cm (h=${pHeight.toFixed(1)}cm) | ${tot.toFixed(1)}/${maxW}g`;
+    calcForces();
+  }
+
+  // Gravidade: Apoio exclusivamente pelo formato (sem cola nos blocos)
+  let gravRun = false, gravPause = false, savedSnap = [], rigidGroups = [];
+
+  function buildRigidGroups() {
+    const n = sticks.length;
+    const boxes = sticks.map(s => new THREE.Box3().setFromObject(s));
+    const vis = new Array(n).fill(false);
+    const half = currentSpan / 2;
+    const lMinX = -(half + pWidth), lMaxX = -half;
+    const rMinX = half, rMaxX = half + pWidth;
+    rigidGroups = [];
+
+    for (let i = 0; i < n; i++) {
+      if (vis[i] || !sticks[i].visible) continue;
+      const comp = [], q = [i];
+      vis[i] = true;
+      while (q.length) {
+        const u = q.shift();
+        comp.push(u);
+        for (let v = 0; v < n; v++) {
+          if (!vis[v] && sticks[v].visible && boxes[u].intersectsBox(boxes[v])) {
+            vis[v] = true; q.push(v);
+          }
+        }
+      }
+
+      const gBox = new THREE.Box3();
+      let sumX = 0, minY = Infinity;
+      comp.forEach(idx => {
+        gBox.union(boxes[idx]);
+        sumX += sticks[idx].position.x;
+        minY = Math.min(minY, boxes[idx].min.y);
+      });
+      const cgX = sumX / comp.length;
+
+      // Verifica contato com o topo dos blocos (y ~= pHeight) ou travamento geométrico interno (cunha/arco)
+      const restLeft = gBox.min.x <= lMaxX && gBox.max.x >= lMinX && minY >= pHeight - 0.35 && minY <= pHeight + 0.35;
+      const restRight = gBox.min.x <= rMaxX && gBox.max.x >= rMinX && minY >= pHeight - 0.35 && minY <= pHeight + 0.35;
+      const wedged = comp.length >= 2 && gBox.min.x <= -half + 0.08 && gBox.max.x >= half - 0.08 && (gBox.max.y - gBox.min.y) > 1.2;
+
+      let state = 'fall', pivotX = cgX, dir = 0;
+      if ((restLeft && restRight) || wedged) {
+        state = 'stable';
+      } else if (restLeft) {
+        if (cgX >= lMinX && cgX <= lMaxX) state = 'stable';
+        else { state = 'tip'; pivotX = lMaxX; dir = -1; }
+      } else if (restRight) {
+        if (cgX >= rMinX && cgX <= rMaxX) state = 'stable';
+        else { state = 'tip'; pivotX = rMinX; dir = 1; }
+      }
+
+      const grp = new THREE.Group();
+      grp.position.set(pivotX, pHeight, 0);
+      scene.add(grp);
+      comp.forEach(idx => {
+        sticks[idx].position.sub(grp.position);
+        grp.add(sticks[idx]);
+      });
+      rigidGroups.push({ grp, state, dir, vy: 0, angV: 0, done: state === 'stable' });
+    }
+  }
+
+  function unwrapGroups() {
+    rigidGroups.forEach(rg => {
+      while (rg.grp.children.length) {
+        const s = rg.grp.children[0];
+        const wp = new THREE.Vector3(), wq = new THREE.Quaternion();
+        s.getWorldPosition(wp); s.getWorldQuaternion(wq);
+        rg.grp.remove(s);
+        s.position.copy(wp); s.quaternion.copy(wq);
+        scene.add(s);
+      }
+      scene.remove(rg.grp);
+    });
+    rigidGroups = [];
+  }
+
+  function startGrav() {
+    if (!gravRun) {
+      savedSnap = sticks.map(s => ({ p: s.position.clone(), r: s.rotation.clone() }));
+      buildRigidGroups();
+      const unstable = rigidGroups.filter(g => g.state !== 'stable').length;
+      $('grav-status').textContent = unstable ? `${unstable} grupo(s) sem apoio caindo/tombando.` : 'Estrutura equilibrada pelo formato!';
+    }
+    gravRun = true;
+    gravPause = false;
+  }
+
+  function togglePauseGrav() {
+    if (!gravRun) return;
+    gravPause = !gravPause;
+    $('grav-status').textContent = gravPause ? 'Simulação pausada.' : 'Gravidade ativa...';
+  }
+
+  function resetGrav(restore = true) {
+    unwrapGroups();
+    debris.forEach(d => scene.remove(d));
+    debris.length = 0;
+    gravRun = false;
+    gravPause = false;
+    if (restore && savedSnap.length === sticks.length) {
+      sticks.forEach((s, i) => {
+        s.visible = true;
+        s.userData.broken = false;
+        s.position.copy(savedSnap[i].p);
+        s.rotation.copy(savedSnap[i].r);
+      });
+    }
+    $('grav-status').textContent = 'Apoio apenas por formato (sem cola nos blocos).';
+    updateStats();
+  }
+
+  $('btn-grav-start').onclick = startGrav;
+  $('btn-grav-pause').onclick = togglePauseGrav;
+  $('btn-grav-reset').onclick = () => resetGrav(true);
+
+  // Botões fixos da barra inferior (sempre visíveis mesmo com painel minimizado)
+  $('quick-grav-start').onclick = startGrav;
+  $('quick-grav-pause').onclick = togglePauseGrav;
+  $('quick-grav-reset').onclick = () => resetGrav(true);
+  $('quick-add-btn').onclick = () => addStick((Math.random() - 0.5) * 4);
+
+  // Teste de carga e ruptura física
+  $('btn-run-test').onclick = () => {
+    if (!sticks.length) return;
+    resetGrav(false);
+    savedSnap = sticks.map(s => ({ p: s.position.clone(), r: s.rotation.clone() }));
+    calcForces();
+    const fMax = parseFloat($('f-max-input').value) || 8.0;
+    let brk = 0;
+
+    sticks.forEach(s => {
+      if (s.userData.stress > fMax) {
+        brk++;
+        s.visible = false;
+        s.userData.broken = true;
+        [-1, 1].forEach(side => {
+          const fg = new THREE.Mesh(halfGeo, new THREE.MeshStandardMaterial({ map: woodTex, color: 0xff4d4d }));
+          fg.position.copy(s.position).add(new THREE.Vector3(side * 2.9, 0, 0).applyEuler(s.rotation));
+          fg.rotation.copy(s.rotation);
+          fg.userData = { vy: 0, vx: side * 1.1, angV: -side * 3.0 };
+          scene.add(fg);
+          debris.push(fg);
+        });
+      }
+    });
+
+    buildRigidGroups();
+    gravRun = true;
+    gravPause = false;
+    $('test-result').innerHTML = brk
+      ? `<span style="color:#ff6b6b;font-weight:800">RUPTURA!</span> ${brk} peça(s) quebraram.`
+      : `<span style="color:#2ec4b6;font-weight:800">SUCESSO!</span> Nenhuma peça rompeu.`;
+  };
+
+  // Gerenciador de Projetos (LocalStorage)
+  const STORAGE_KEY = 'ponte_3d_projetos_v1';
+  const defaultProjects = {
+    'Exemplo 1: Ponte Simples': {
+      span: 22, ideal: true, maxW: 60, pW: 1.5, cW: 0.3, load: 15, fMax: 8, dist: 'uniform',
+      sticks: [
+        { x: -6.5, y: 5.65, z: 0, rx: 0, ry: 0, rz: 0 },
+        { x: 6.5, y: 5.65, z: 0, rx: 0, ry: 0, rz: 0 },
+        { x: 0, y: 5.9, z: 0, rx: 0, ry: 0, rz: 0 }
+      ]
+    },
+    'Exemplo 2: Treliça Triangular': {
+      span: 24, ideal: true, maxW: 60, pW: 1.5, cW: 0.3, load: 18, fMax: 8, dist: 'center',
+      sticks: [
+        { x: -7, y: 6.15, z: 0, rx: 0, ry: 0, rz: 0 },
+        { x: 7, y: 6.15, z: 0, rx: 0, ry: 0, rz: 0 },
+        { x: 0, y: 6.4, z: 0, rx: 0, ry: 0, rz: 0 },
+        { x: -5.5, y: 9.2, z: 0, rx: 0, ry: 0, rz: 0.65 },
+        { x: 5.5, y: 9.2, z: 0, rx: 0, ry: 0, rz: -0.65 },
+        { x: 0, y: 12.2, z: 0, rx: 0, ry: 0, rz: 0 }
+      ]
+    }
+  };
+
+  function getProjects() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultProjects));
+    return defaultProjects;
+  }
+
+  function refreshProjectList(selectName = null) {
+    const projs = getProjects();
+    const sel = $('project-select');
+    sel.innerHTML = '';
+    Object.keys(projs).forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = `${name} (${projs[name].sticks.length}p)`;
+      sel.appendChild(opt);
+    });
+    if (selectName && projs[selectName]) sel.value = selectName;
+  }
+
+  function loadProject(name) {
+    const projs = getProjects();
+    const data = projs[name];
+    if (!data) return;
+    resetGrav(false);
+    sticks.forEach(s => scene.remove(s));
+    sticks.length = 0;
+    selectStick(null);
+
+    $('span-slider').value = data.span || 24;
+    $('ideal-toggle').checked = data.ideal !== undefined ? data.ideal : true;
+    $('max-weight').value = data.maxW || 60;
+    $('stick-weight').value = data.pW || 1.5;
+    $('glue-weight').value = data.cW || 0.3;
+    $('test-load').value = data.load || 15;
+    $('f-max-input').value = data.fMax || 8.0;
+    $('load-dist').value = data.dist || 'uniform';
+    $('project-name').value = name;
+
+    updateSpan(data.span || 24, true);
+    (data.sticks || []).forEach(st => addStick(st.x, st.y, st.z, st.rx, st.ry, st.rz));
+    selectStick(null);
+    updateStats();
+  }
+
+  $('btn-save-proj').onclick = () => {
+    resetGrav(true);
+    const name = ($('project-name').value || '').trim() || ('Projeto ' + (Object.keys(getProjects()).length + 1));
+    const projs = getProjects();
+    projs[name] = {
+      span: currentSpan,
+      ideal: $('ideal-toggle').checked,
+      maxW: parseFloat($('max-weight').value) || 60,
+      pW: parseFloat($('stick-weight').value) || 1.5,
+      cW: parseFloat($('glue-weight').value) || 0.3,
+      load: parseFloat($('test-load').value) || 15,
+      fMax: parseFloat($('f-max-input').value) || 8.0,
+      dist: $('load-dist').value,
+      sticks: sticks.map(s => ({
+        x: s.position.x, y: s.position.y, z: s.position.z,
+        rx: s.rotation.x, ry: s.rotation.y, rz: s.rotation.z
+      }))
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(projs));
+    refreshProjectList(name);
+    $('project-name').value = name;
+  };
+
+  $('project-select').onchange = e => loadProject(e.target.value);
+
+  $('btn-new-proj').onclick = () => {
+    resetGrav(false);
+    sticks.forEach(s => scene.remove(s));
+    sticks.length = 0;
+    selectStick(null);
+    $('project-name').value = '';
+    updateStats();
+  };
+
+  $('btn-del-proj').onclick = () => {
+    const sel = $('project-select').value;
+    const projs = getProjects();
+    if (Object.keys(projs).length <= 1) return;
+    delete projs[sel];
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(projs));
+    refreshProjectList();
+    loadProject($('project-select').value);
+  };
+
+  // Eventos Gerais e Controles
+  $('btn-add-stick').onclick = () => addStick((Math.random() - 0.5) * 4);
+  $('btn-dup-stick').onclick = dupStick;
+  $('btn-delete').onclick = delStick;
+  $('span-slider').oninput = e => updateSpan(parseInt(e.target.value, 10), true);
+
+  $('btn-toggle-forces').onclick = e => {
+    showForces = !showForces;
+    e.target.classList.toggle('active', showForces);
+    e.target.textContent = showForces ? '👁 Ocultar Forças' : '👁 Ver Distribuição de Forças';
+    updateStats();
+  };
+
+  $('toggle-menu-btn').onclick = () => $('ui-panel').classList.toggle('collapsed');
+  $('close-panel-btn').onclick = () => $('ui-panel').classList.add('collapsed');
+
+  document.querySelectorAll('[data-view]').forEach(b => b.onclick = () => {
+    camTX = 0; camTY = pHeight * 0.9;
+    const v = b.dataset.view;
+    if (v === 'front') { camAz = 0; camEl = 0.04; }
+    if (v === 'top') { camAz = 0; camEl = 1.48; }
+    if (v === 'side') { camAz = Math.PI / 2; camEl = 0.08; }
+    if (v === '3d') { camAz = 0.55; camEl = 0.42; }
+    updateCamera();
+  });
+
+  $('cam-left').onclick = () => { camTX -= 4; updateCamera(); };
+  $('cam-right').onclick = () => { camTX += 4; updateCamera(); };
+  $('cam-zoom-in').onclick = () => { camDist = Math.max(10, camDist - 6); updateCamera(); };
+  $('cam-zoom-out').onclick = () => { camDist = Math.min(180, camDist + 6); updateCamera(); };
+
+  ['ideal-toggle', 'max-weight', 'stick-weight', 'glue-weight', 'test-load', 'f-max-input', 'load-dist'].forEach(id => {
+    $(id).oninput = () => { updateLoadIndicator(); updateStats(); };
+  });
+
+  // D-Pad Tátil
+  document.querySelectorAll('#touch-dpad button').forEach(btn => {
+    btn.onclick = () => {
+      if (!selectedStick) return;
+      resetGrav(false);
+      const a = btn.dataset.act, st = 0.5, rt = Math.PI / 18;
+      if (a === 'up') selectedStick.position.y += st;
+      if (a === 'down') selectedStick.position.y -= st;
+      if (a === 'left') selectedStick.position.x -= st;
+      if (a === 'right') selectedStick.position.x += st;
+      if (a === 'zIn') selectedStick.position.z += st;
+      if (a === 'zOut') selectedStick.position.z -= st;
+      if (a === 'rotL') selectedStick.rotation.z += rt;
+      if (a === 'rotR') selectedStick.rotation.z -= rt;
+      if (a === 'rotX') selectedStick.rotation.x += rt;
+      clampToGround(selectedStick);
+      updateStats();
+    };
+  });
+
+  // Gestos de Toque e Mouse
+  const ray = new THREE.Raycaster(), ptrs = new Map();
+  let isOrb = false, lx = 0, ly = 0, pinchD = 0;
+  const dom = renderer.domElement;
+  dom.oncontextmenu = e => e.preventDefault();
+
+  dom.onpointerdown = e => {
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    lx = e.clientX; ly = e.clientY;
+    if (ptrs.size === 2) {
+      const pts = [...ptrs.values()];
+      pinchD = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      isOrb = false; return;
+    }
+    if (e.button === 2) { isOrb = true; return; }
+    const m = new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+    ray.setFromCamera(m, camera);
+    const hits = ray.intersectObjects(sticks.filter(s => s.visible));
+    if (hits.length) selectStick(hits[0].object);
+    else { selectStick(null); isOrb = true; }
+  };
+
+  window.onpointermove = e => {
+    if (!ptrs.has(e.pointerId)) return;
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ptrs.size === 2) {
+      const pts = [...ptrs.values()];
+      const d = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      if (pinchD > 0) { camDist = Math.max(10, Math.min(180, camDist - (d - pinchD) * 0.12)); updateCamera(); }
+      pinchD = d; return;
+    }
+    if (!isOrb) return;
+    camAz -= (e.clientX - lx) * 0.008;
+    camEl = Math.max(-0.15, Math.min(1.5, camEl + (e.clientY - ly) * 0.008));
+    lx = e.clientX; ly = e.clientY;
+    updateCamera();
+  };
+
+  window.onpointerup = e => { ptrs.delete(e.pointerId); if (!ptrs.size) isOrb = false; };
+  dom.addEventListener('wheel', e => { camDist = Math.max(10, Math.min(180, camDist + e.deltaY * 0.03)); updateCamera(); }, { passive: true });
+
+  window.onkeydown = e => {
+    if (['INPUT', 'SELECT'].includes(document.activeElement.tagName)) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') { e.preventDefault(); dupStick(); return; }
+    if (!selectedStick) return;
+    resetGrav(false);
+    const k = e.key.toLowerCase(), st = 0.5, rt = Math.PI / 18;
+    if (k === 'a' || k === 'arrowleft') selectedStick.position.x -= st;
+    if (k === 'd' || k === 'arrowright') selectedStick.position.x += st;
+    if (k === 'w' || k === 'arrowup') selectedStick.position.y += st;
+    if (k === 's' || k === 'arrowdown') selectedStick.position.y -= st;
+    if (k === 'z') selectedStick.position.z += st;
+    if (k === 'x') selectedStick.position.z -= st;
+    if (k === 'q') selectedStick.rotation.z += rt;
+    if (k === 'e') selectedStick.rotation.z -= rt;
+    if (k === 'r') selectedStick.rotation.x += rt;
+    if (k === 'f') selectedStick.rotation.x -= rt;
+    if (e.key === 'Delete' || e.key === 'Backspace') delStick();
+    clampToGround(selectedStick);
+    updateStats();
+  };
+
+  window.onresize = () => { renderer.setSize(window.innerWidth, window.innerHeight); updateCamera(); };
+
+  // Inicia recolhido no mobile para visão limpa com os botões fixos embaixo
+  if (window.innerWidth <= 768) $('ui-panel').classList.add('collapsed');
+  refreshProjectList('Exemplo 1: Ponte Simples');
+  loadProject('Exemplo 1: Ponte Simples');
+
+  // Loop de Física e Renderização
+  let lastT = performance.now();
+  function animate(now) {
+    requestAnimationFrame(animate);
+    const dt = Math.min(0.05, (now - lastT) / 1000);
+    lastT = now;
+
+    if (gravRun && !gravPause) {
+      const g = 28.0;
+      rigidGroups.forEach(rg => {
+        if (rg.done) return;
+        rg.grp.updateMatrixWorld(true);
+        const b = new THREE.Box3().setFromObject(rg.grp);
+
+        if (rg.state === 'tip') {
+          rg.angV += rg.dir * 3.8 * dt;
+          rg.grp.rotation.z += rg.angV * dt;
+          if (Math.abs(rg.grp.rotation.z) > 1.05) rg.state = 'fall';
+        }
+        if (rg.state === 'fall') {
+          rg.vy -= g * dt;
+          rg.grp.position.y += rg.vy * dt;
+        }
+
+        rg.grp.updateMatrixWorld(true);
+        const nb = new THREE.Box3().setFromObject(rg.grp);
+        if (nb.min.y <= 0) {
+          rg.grp.position.y += -nb.min.y;
+          rg.vy = 0; rg.angV = 0; rg.done = true;
+        }
+      });
+
+      debris.forEach(fg => {
+        fg.updateMatrixWorld(true);
+        const b = new THREE.Box3().setFromObject(fg);
+        if (b.min.y > 0) {
+          fg.userData.vy -= g * dt;
+          fg.position.y += fg.userData.vy * dt;
+          fg.position.x += fg.userData.vx * dt;
+          fg.rotation.z += fg.userData.angV * dt;
+          fg.updateMatrixWorld(true);
+          const nb = new THREE.Box3().setFromObject(fg);
+          if (nb.min.y <= 0) {
+            fg.position.y += -nb.min.y;
+            fg.userData.vy = 0; fg.userData.vx = 0; fg.userData.angV = 0;
+          }
+        }
+      });
+    }
+    renderer.render(scene, camera);
+  }
+  animate(performance.now());
+};
+</script>
+</body>
+</html>
